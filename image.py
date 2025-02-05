@@ -37,8 +37,13 @@ if uploaded_file is not None:
         # Call the AI model API (e.g., Runway ML or custom backend)
         try:
             # Replace with your AI model API endpoint
-            API_URL = "https://api.runwayml.com/v1/generate"
+            API_URL = "https://api.runwayml.com/v1/specific-endpoint"  # Update to the correct endpoint
             API_KEY = os.getenv("RUNWAY_API_KEY")
+
+            if not API_KEY:
+                st.error("API key is missing. Please set the RUNWAY_API_KEY environment variable.")
+                logging.error("API key is missing.")
+                st.stop()
 
             headers = {"Authorization": f"Bearer {API_KEY}"}
             files = {"image": open(image_path, "rb")}
