@@ -1,13 +1,32 @@
 import streamlit as st
-import numpy as np
+import torch
 import cv2
+import numpy as np
+from segment_anything import sam_model_registry, SamPredictor
+from diffusers import AnimateDiffPipeline
 import moviepy.editor as mp
-from tempfile import NamedTemporaryFile
+import tempfile
+
+# Load AI models
+@st.cache_resource
+def load_models():
+    # Load Segment Anything Model (SAM)
+    sam_checkpoint = "sam_vit_h.pth"  # Download model if needed
+    sam = sam_model_registry["vit_h"](checkpoint=sam_checkpoint)
+    sam.to("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Load AnimateDiff (for AI motion)
+    animate_diff = AnimateDiffPipeline.from_pretrained("AnimateDiff/sdxl")
+    animate_diff.to("cuda" if torch.cuda.is_available() else "cpu")
+
+    return sam, animate_diff
+
+sam, animate_diff = load_models()
 
 # Streamlit UI
-st.title("🖼️ Image Animation with Motion! 🎬")
+st.title("🖼️ AI-Powered Image Animation 🎥")
 st.sidebar.header("Settings")
-motion_speed = st.sidebar.slider("Motion Speed", 1, 10, 5)
+motion_strength = st.sidebar.slider("Motion Strength", 1, 10, 5)
 video_duration = st.sidebar.slider("Video Duration (seconds)", 2, 10, 5)
 
 # Upload Image
@@ -17,53 +36,30 @@ if uploaded_file:
     # Read Image
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_UNCHANGED)
-
+    
     # Convert BGR to RGB
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-    # Display the image
+    
+    # Display Image
     st.image(img, caption="Uploaded Image", use_column_width=True)
 
-    # Get image dimensions
-    height, width, _ = img.shape
+    # **Step 1: Extract Objects using SAM**
+    predictor = SamPredictor(sam)
+    predictor.set_image(img)
+    masks, _, _ = predictor.predict()  # Get object masks
 
-    # Detect objects using OpenCV (simple contour detection)
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # **Step 2: Generate AI Motion using AnimateDiff**
+    prompt = "Generate realistic motion for the foreground elements"
+    animation_frames = animate_diff(prompt, num_inference_steps=motion_strength, video_length=video_duration * 24)
 
-    # Create layers for detected objects
-    object_layers = []
-    for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        object_layers.append((img[y:y+h, x:x+w], (x, y, w, h)))
+    # Convert frames to video
+    temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+    animation_clip = mp.ImageSequenceClip([np.array(f) for f in animation_frames], fps=24)
+    animation_clip.write_videofile(temp_video.name, codec="libx264")
 
-    # Create frames with motion
-    frames = []
-    for t in range(video_duration * 24):  # Assuming 24 FPS
-        frame = img.copy()
-        for obj, (x, y, w, h) in object_layers:
-            # Move objects randomly
-            dx = int(np.sin(t / 10) * motion_speed)
-            dy = int(np.cos(t / 10) * motion_speed)
-            new_x, new_y = x + dx, y + dy
-
-            # Ensure objects stay within bounds
-            new_x = max(0, min(new_x, width - w))
-            new_y = max(0, min(new_y, height - h))
-
-            frame[new_y:new_y+h, new_x:new_x+w] = obj  # Place object at new position
-
-        frames.append(frame)
-
-    # Convert frames to a video
-    clip = mp.ImageSequenceClip(frames, fps=24)
-    temp_file = NamedTemporaryFile(delete=False, suffix=".mp4")
-    clip.write_videofile(temp_file.name, codec="libx264")
-
-    # Display Video
-    st.video(temp_file.name)
+    # Display AI-generated Video
+    st.video(temp_video.name)
 
     # Provide Download Option
-    with open(temp_file.name, "rb") as file:
-        st.download_button("📥 Download Animated Video", file, file_name="animated_motion.mp4", mime="video/mp4")
+    with open(temp_video.name, "rb") as file:
+        st.download_button("📥 Download AI Animated Video", file, file_name="ai_motion.mp4", mime="video/mp4")
