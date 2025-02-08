@@ -3,8 +3,9 @@ moviepy==1.0.3
 imageio[ffmpeg]
 opencv-python-headless
 numpy
-torch==2.5.0  # Ensure compatibility
+torch
 torchvision
 git+https://github.com/facebookresearch/segment-anything.git
-diffusers==0.24.0  # MotionAdapter is available in this version
+diffusers
 requests
+huggingface_hub
