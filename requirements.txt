@@ -2,3 +2,4 @@ streamlit
 moviepy
 opencv-python-headless
 numpy
+imageio[ffmpeg]
