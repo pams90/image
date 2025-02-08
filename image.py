@@ -5,7 +5,6 @@ import numpy as np
 from segment_anything import sam_model_registry, SamPredictor
 from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
 from diffusers.utils import export_to_gif
-import tempfile
 from PIL import Image
 from io import BytesIO
 import os
@@ -28,7 +27,7 @@ def download_checkpoint(url, checkpoint_path):
 download_checkpoint(CHECKPOINT_URL, CHECKPOINT_PATH)
 
 # Load AI models
-@st.cache_resource
+@st.experimental_singleton
 def load_models():
     # Load Segment Anything Model (SAM)
     sam_checkpoint = CHECKPOINT_PATH
@@ -75,29 +74,20 @@ if uploaded_file:
     # Convert to numpy array for SAM
     img_np = np.array(image)
 
-    # Object selection
+    # Object selection via Streamlit's interactive features
     st.markdown("## Select Object to Animate")
-    st.write("Click on the object you want to animate")
-
-    # Get click coordinates
-    click_container = st.empty()
-    with click_container:
-        click_coords = st.data_editor(
-            [{"x": 0, "y": 0}],
-            column_config={
-                "x": st.column_config.NumberColumn("X coordinate"),
-                "y": st.column_config.NumberColumn("Y coordinate")
-            },
-            hide_index=True,
-            key="coords"
-        )
+    click_coords = st.slider(
+        "Click the object to animate by specifying coordinates:",
+        min_value=0, max_value=image.size[0], value=(0, 0),
+        step=1, format="%(value)s"
+    )
 
     if st.button("Segment Object"):
         # Run SAM with point input
         predictor = SamPredictor(sam)
         predictor.set_image(img_np)
 
-        input_point = np.array([[click_coords[0]["x"], click_coords[0]["y"]]])
+        input_point = np.array([[click_coords[0], click_coords[1]]])
         input_label = np.array([1])  # Positive label
 
         masks, scores, _ = predictor.predict(
@@ -127,16 +117,19 @@ if uploaded_file:
                 num_frames=video_duration * 8,  # 8fps for shorter generation
             )
 
-            # Save to GIF
+            # Save to GIF (for video conversion)
             gif_bytes = export_to_gif(output.frames[0], "animation.gif")
 
+            # Convert gif to MP4
+            video_bytes = gif_bytes  # Placeholder for future gif-to-mp4 conversion logic
+
             # Display and download
-            st.video(gif_bytes, format="video/mp4")
+            st.video(video_bytes, format="video/mp4")
             st.download_button(
                 label="Download Animation",
-                data=gif_bytes,
+                data=video_bytes,
                 file_name="animated_object.mp4",
                 mime="video/mp4"
             )
 else:
-    st.warning("Please upload the SAM checkpoint file to proceed.")
+    st.warning("Please upload an image to proceed.")
