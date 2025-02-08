@@ -1,66 +1,76 @@
 import streamlit as st
-import requests
+import numpy as np
+import cv2
 import os
-from PIL import Image
-import logging
-import atexit
+import moviepy.editor as mp
+from moviepy.video.fx import fadein, fadeout
+from moviepy.video.fx import resize
+from moviepy.video.fx import scroll
+from tempfile import NamedTemporaryFile
 
-# Title of the app
-st.title("Image to Video AI App")
+# Title
+st.title("📷 Image to Animated Video Converter 🎬")
+
+# Sidebar options
+st.sidebar.header("Settings")
+effect = st.sidebar.selectbox("Choose an animation effect:", ["Pan", "Zoom", "Fade"])
+duration = st.sidebar.slider("Video Duration (seconds)", 2, 10, 5)
+speed = st.sidebar.slider("Animation Speed", 0.5, 3.0, 1.0)
 
 # Upload image
-uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
 
-if uploaded_file is not None:
-    # Display the uploaded image
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_container_width=True)
+if uploaded_file:
+    # Load image
+    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    
+    # Convert OpenCV BGR to RGB
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    # Generate video on button click
-    if st.button("Generate Video"):
-        st.write("Generating video...")
+    # Display the image
+    st.image(img, caption="Uploaded Image", use_column_width=True)
 
-        # Save the uploaded image temporarily
-        image_path = "temp_image.jpg"
-        video_path = "generated_video.mp4"
-        image.save(image_path)
+    # Get image dimensions
+    height, width, _ = img.shape
 
-        # Register cleanup function to remove temporary files
-        def remove_temp_files():
-            if os.path.exists(image_path):
-                os.remove(image_path)
-            if os.path.exists(video_path):
-                os.remove(video_path)
+    # Define output video parameters
+    fps = 24
+    output_path = "output.mp4"
 
-        atexit.register(remove_temp_files)
+    def apply_pan_effect():
+        """Apply a pan effect (left to right scrolling)."""
+        clip = mp.ImageClip(img).set_duration(duration)
+        clip = scroll.scroll(clip, w=width, x_speed=int(speed * 10))
+        return clip
 
-        # Call the AI model API (e.g., Runway ML or custom backend)
-        try:
-            # Replace with your AI model API endpoint
-            API_URL = "https://api.runwayml.com/v1/specific-endpoint"  # Update to the correct endpoint
-            API_KEY = os.getenv("RUNWAY_API_KEY")
+    def apply_zoom_effect():
+        """Apply a zoom-in effect."""
+        clip = mp.ImageClip(img).set_duration(duration)
+        clip = resize.resize(clip, lambda t: 1 + 0.2 * (t / duration))
+        return clip
 
-            if not API_KEY:
-                st.error("API key is missing. Please set the RUNWAY_API_KEY environment variable.")
-                logging.error("API key is missing.")
-                st.stop()
+    def apply_fade_effect():
+        """Apply a fade-in and fade-out effect."""
+        clip = mp.ImageClip(img).set_duration(duration)
+        clip = fadein.fadein(clip, 1).fx(fadeout.fadeout, 1)
+        return clip
 
-            headers = {"Authorization": f"Bearer {API_KEY}"}
-            files = {"image": open(image_path, "rb")}
-            response = requests.post(API_URL, headers=headers, files=files)
-            response.raise_for_status()
+    # Select animation effect
+    if effect == "Pan":
+        final_clip = apply_pan_effect()
+    elif effect == "Zoom":
+        final_clip = apply_zoom_effect()
+    elif effect == "Fade":
+        final_clip = apply_fade_effect()
 
-            # Save the generated video
-            with open(video_path, "wb") as f:
-                f.write(response.content)
+    # Save video
+    final_clip.write_videofile(output_path, fps=fps, codec="libx264", audio=False)
 
-            # Display the generated video
-            st.video(video_path)
-            st.success("Video generated successfully!")
+    # Display the video
+    st.video(output_path)
 
-        except requests.exceptions.HTTPError as http_err:
-            st.error(f"HTTP error occurred: {http_err}")
-            logging.error(f"HTTP error occurred: {http_err}")
-        except Exception as err:
-            st.error(f"An error occurred: {err}")
-            logging.error(f"An error occurred: {err}")
+    # Provide download link
+    with open(output_path, "rb") as file:
+        st.download_button("📥 Download Video", file, file_name="animated_video.mp4", mime="video/mp4")
+
