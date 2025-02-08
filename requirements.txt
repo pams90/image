@@ -3,8 +3,8 @@ moviepy==1.0.3
 imageio[ffmpeg]
 opencv-python-headless
 numpy
-torch
+torch==2.5.0  # Avoid PyTorch 2.6 breaking changes
 torchvision
 git+https://github.com/facebookresearch/segment-anything.git
-diffusers
+diffusers==0.25.0  # Ensure compatibility with AnimateDiff
 requests
