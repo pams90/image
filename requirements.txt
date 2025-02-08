@@ -5,3 +5,4 @@ opencv-python-headless
 numpy
 torch
 git+https://github.com/facebookresearch/segment-anything.git
+torchvision
