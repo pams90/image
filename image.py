@@ -6,7 +6,6 @@ from segment_anything import sam_model_registry, SamPredictor
 from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
 from diffusers.utils import export_to_gif
 from PIL import Image
-from io import BytesIO
 import os
 import requests
 
