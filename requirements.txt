@@ -1,3 +1,4 @@
 streamlit
-requests
-pillow
+moviepy
+opencv-python
+numpy
