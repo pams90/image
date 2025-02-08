@@ -1,9 +1,0 @@
-import atexit
-
-def remove_temp_files():
-    if os.path.exists(image_path):
-        os.remove(image_path)
-    if os.path.exists(video_path):
-        os.remove(video_path)
-
-atexit.register(remove_temp_files)
