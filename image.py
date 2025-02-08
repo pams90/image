@@ -3,63 +3,111 @@ import torch
 import cv2
 import numpy as np
 from segment_anything import sam_model_registry, SamPredictor
-from diffusers import AnimateDiffPipeline
-import moviepy.editor as mp
+from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+from diffusers.utils import export_to_gif
 import tempfile
+from PIL import Image
+from io import BytesIO
 
 # Load AI models
 @st.cache_resource
 def load_models():
     # Load Segment Anything Model (SAM)
-    sam_checkpoint = "sam_vit_h.pth"  # Download model if needed
-    sam = sam_model_registry["vit_h"](checkpoint=sam_checkpoint)
-    sam.to("cuda" if torch.cuda.is_available() else "cpu")
+    sam_checkpoint = "sam_vit_h_4b8939.pth"
+    model_type = "vit_h"
+    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+    sam.to(device="cuda" if torch.cuda.is_available() else "cpu")
     
-    # Load AnimateDiff (for AI motion)
-    animate_diff = AnimateDiffPipeline.from_pretrained("AnimateDiff/sdxl")
-    animate_diff.to("cuda" if torch.cuda.is_available() else "cpu")
+    # Load AnimateDiff with motion adapter
+    adapter = MotionAdapter.from_pretrained("diffusers/motion-adapter-sd1.5-2-2")
+    pipe = AnimateDiffPipeline.from_pretrained(
+        "runwayml/stable-diffusion-v1-5", 
+        motion_adapter=adapter
+    )
+    pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler_config)
+    pipe.enable_model_cpu_offload()
 
-    return sam, animate_diff
+    return sam, pipe
 
-sam, animate_diff = load_models()
+sam, animate_pipe = load_models()
 
 # Streamlit UI
 st.title("🖼️ AI-Powered Image Animation 🎥")
 st.sidebar.header("Settings")
-motion_strength = st.sidebar.slider("Motion Strength", 1, 10, 5)
-video_duration = st.sidebar.slider("Video Duration (seconds)", 2, 10, 5)
+motion_strength = st.sidebar.slider("Motion Strength", 1.0, 2.0, 1.2)
+video_duration = st.sidebar.slider("Video Duration (seconds)", 2, 5, 3)
 
 # Upload Image
 uploaded_file = st.file_uploader("Upload an Image", type=["png", "jpg", "jpeg"])
 
 if uploaded_file:
-    # Read Image
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, cv2.IMREAD_UNCHANGED)
+    # Read and process image
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Uploaded Image", use_column_width=True)
     
-    # Convert BGR to RGB
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # Convert to numpy array for SAM
+    img_np = np.array(image)
     
-    # Display Image
-    st.image(img, caption="Uploaded Image", use_column_width=True)
-
-    # **Step 1: Extract Objects using SAM**
-    predictor = SamPredictor(sam)
-    predictor.set_image(img)
-    masks, _, _ = predictor.predict()  # Get object masks
-
-    # **Step 2: Generate AI Motion using AnimateDiff**
-    prompt = "Generate realistic motion for the foreground elements"
-    animation_frames = animate_diff(prompt, num_inference_steps=motion_strength, video_length=video_duration * 24)
-
-    # Convert frames to video
-    temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-    animation_clip = mp.ImageSequenceClip([np.array(f) for f in animation_frames], fps=24)
-    animation_clip.write_videofile(temp_video.name, codec="libx264")
-
-    # Display AI-generated Video
-    st.video(temp_video.name)
-
-    # Provide Download Option
-    with open(temp_video.name, "rb") as file:
-        st.download_button("📥 Download AI Animated Video", file, file_name="ai_motion.mp4", mime="video/mp4")
+    # Object selection
+    st.markdown("## Select Object to Animate")
+    st.write("Click on the object you want to animate")
+    
+    # Get click coordinates
+    click_container = st.empty()
+    with click_container:
+        click_coords = st.data_editor(
+            [{"x": 0, "y": 0}],
+            column_config={
+                "x": st.column_config.NumberColumn("X coordinate"),
+                "y": st.column_config.NumberColumn("Y coordinate")
+            },
+            hide_index=True,
+            key="coords"
+        )
+    
+    if st.button("Segment Object"):
+        # Run SAM with point input
+        predictor = SamPredictor(sam)
+        predictor.set_image(img_np)
+        
+        input_point = np.array([[click_coords[0]["x"], click_coords[0]["y"]]])
+        input_label = np.array([1])  # Positive label
+        
+        masks, scores, _ = predictor.predict(
+            point_coords=input_point,
+            point_labels=input_label,
+            multimask_output=True,
+        )
+        
+        # Select best mask
+        best_mask = masks[np.argmax(scores)].astype(np.uint8)
+        
+        # Apply mask to original image
+        masked_image = cv2.bitwise_and(img_np, img_np, mask=best_mask)
+        st.image(masked_image, caption="Segmented Object", use_column_width=True)
+        
+        # Generate animation
+        with st.spinner("Generating animation..."):
+            # Convert to PIL Image
+            input_image = Image.fromarray(masked_image).resize((512, 512))
+            
+            # Generate animation frames
+            output = animate_pipe(
+                image=input_image,
+                prompt="professional high-quality animated movie, smooth motion",  # Generic motion prompt
+                guidance_scale=motion_strength,
+                num_inference_steps=25,
+                num_frames=video_duration * 8,  # 8fps for shorter generation
+            )
+            
+            # Save to GIF
+            gif_bytes = export_to_gif(output.frames[0], "animation.gif")
+            
+            # Display and download
+            st.video(gif_bytes, format="video/mp4")
+            st.download_button(
+                label="Download Animation",
+                data=gif_bytes,
+                file_name="animated_object.mp4",
+                mime="video/mp4"
+            )
