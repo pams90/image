@@ -8,12 +8,16 @@ from diffusers.utils import export_to_gif
 import tempfile
 from PIL import Image
 from io import BytesIO
+import os
 
 # Load AI models
 @st.cache_resource
 def load_models():
     # Load Segment Anything Model (SAM)
     sam_checkpoint = "sam_vit_h_4b8939.pth"
+    if not os.path.isfile(sam_checkpoint):
+        st.error(f"Checkpoint file '{sam_checkpoint}' not found.")
+        return None, None
     model_type = "vit_h"
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
     sam.to(device="cuda" if torch.cuda.is_available() else "cpu")
@@ -30,6 +34,9 @@ def load_models():
     return sam, pipe
 
 sam, animate_pipe = load_models()
+
+if sam is None or animate_pipe is None:
+    st.stop()
 
 # Streamlit UI
 st.title("🖼️ AI-Powered Image Animation 🎥")
