@@ -37,6 +37,9 @@ def load_models():
         return None, None
     model_type = "vit_h"
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+    with open(sam_checkpoint, "rb") as f:
+        state_dict = torch.load(f, weights_only=False)
+    sam.load_state_dict(state_dict)
     sam.to(device="cuda" if torch.cuda.is_available() else "cpu")
 
     # Load AnimateDiff with motion adapter
