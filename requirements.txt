@@ -3,8 +3,8 @@ moviepy==1.0.3
 imageio[ffmpeg]
 opencv-python-headless
 numpy
-torch==2.5.0  # Avoid PyTorch 2.6 breaking changes
+torch==2.5.0  # Ensure compatibility
 torchvision
 git+https://github.com/facebookresearch/segment-anything.git
-diffusers==0.25.0  # Ensure compatibility with AnimateDiff
+diffusers==0.24.0  # MotionAdapter is available in this version
 requests
