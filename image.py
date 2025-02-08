@@ -1,31 +1,24 @@
 import streamlit as st
 import numpy as np
 import cv2
-import os
 import moviepy.editor as mp
-from moviepy.video.fx import fadein, fadeout
-from moviepy.video.fx import resize
-from moviepy.video.fx import scroll
 from tempfile import NamedTemporaryFile
 
-# Title
-st.title("📷 Image to Animated Video Converter 🎬")
-
-# Sidebar options
+# Streamlit UI
+st.title("🖼️ Image Animation with Motion! 🎬")
 st.sidebar.header("Settings")
-effect = st.sidebar.selectbox("Choose an animation effect:", ["Pan", "Zoom", "Fade"])
-duration = st.sidebar.slider("Video Duration (seconds)", 2, 10, 5)
-speed = st.sidebar.slider("Animation Speed", 0.5, 3.0, 1.0)
+motion_speed = st.sidebar.slider("Motion Speed", 1, 10, 5)
+video_duration = st.sidebar.slider("Video Duration (seconds)", 2, 10, 5)
 
-# Upload image
-uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
+# Upload Image
+uploaded_file = st.file_uploader("Upload an Image", type=["png", "jpg", "jpeg"])
 
 if uploaded_file:
-    # Load image
+    # Read Image
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-    
-    # Convert OpenCV BGR to RGB
+    img = cv2.imdecode(file_bytes, cv2.IMREAD_UNCHANGED)
+
+    # Convert BGR to RGB
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     # Display the image
@@ -34,43 +27,43 @@ if uploaded_file:
     # Get image dimensions
     height, width, _ = img.shape
 
-    # Define output video parameters
-    fps = 24
-    output_path = "output.mp4"
+    # Detect objects using OpenCV (simple contour detection)
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    def apply_pan_effect():
-        """Apply a pan effect (left to right scrolling)."""
-        clip = mp.ImageClip(img).set_duration(duration)
-        clip = scroll.scroll(clip, w=width, x_speed=int(speed * 10))
-        return clip
+    # Create layers for detected objects
+    object_layers = []
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        object_layers.append((img[y:y+h, x:x+w], (x, y, w, h)))
 
-    def apply_zoom_effect():
-        """Apply a zoom-in effect."""
-        clip = mp.ImageClip(img).set_duration(duration)
-        clip = resize.resize(clip, lambda t: 1 + 0.2 * (t / duration))
-        return clip
+    # Create frames with motion
+    frames = []
+    for t in range(video_duration * 24):  # Assuming 24 FPS
+        frame = img.copy()
+        for obj, (x, y, w, h) in object_layers:
+            # Move objects randomly
+            dx = int(np.sin(t / 10) * motion_speed)
+            dy = int(np.cos(t / 10) * motion_speed)
+            new_x, new_y = x + dx, y + dy
 
-    def apply_fade_effect():
-        """Apply a fade-in and fade-out effect."""
-        clip = mp.ImageClip(img).set_duration(duration)
-        clip = fadein.fadein(clip, 1).fx(fadeout.fadeout, 1)
-        return clip
+            # Ensure objects stay within bounds
+            new_x = max(0, min(new_x, width - w))
+            new_y = max(0, min(new_y, height - h))
 
-    # Select animation effect
-    if effect == "Pan":
-        final_clip = apply_pan_effect()
-    elif effect == "Zoom":
-        final_clip = apply_zoom_effect()
-    elif effect == "Fade":
-        final_clip = apply_fade_effect()
+            frame[new_y:new_y+h, new_x:new_x+w] = obj  # Place object at new position
 
-    # Save video
-    final_clip.write_videofile(output_path, fps=fps, codec="libx264", audio=False)
+        frames.append(frame)
 
-    # Display the video
-    st.video(output_path)
+    # Convert frames to a video
+    clip = mp.ImageSequenceClip(frames, fps=24)
+    temp_file = NamedTemporaryFile(delete=False, suffix=".mp4")
+    clip.write_videofile(temp_file.name, codec="libx264")
 
-    # Provide download link
-    with open(output_path, "rb") as file:
-        st.download_button("📥 Download Video", file, file_name="animated_video.mp4", mime="video/mp4")
+    # Display Video
+    st.video(temp_file.name)
 
+    # Provide Download Option
+    with open(temp_file.name, "rb") as file:
+        st.download_button("📥 Download Animated Video", file, file_name="animated_motion.mp4", mime="video/mp4")
