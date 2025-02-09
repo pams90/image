@@ -1,5 +1,5 @@
+streamlit==1.32.0
 numpy==1.26.4
 opencv-python-headless==4.9.0.80
 imageio[ffmpeg]==2.34.0
 Pillow==10.2.0
-streamlit==1.32.0
