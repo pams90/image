@@ -1,90 +1,76 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
+import cv2
 import imageio
 import tempfile
-import cv2
 
-# Quantum-stabilized frame generator
-class QuantumVideoEngine:
-    def __init__(self, image_array):
-        self.base = image_array.astype(np.float32)
-        self.h, self.w = self.base.shape[:2]
-        self.quantum_field = self._generate_quantum_matrix()
-    
-    def _generate_quantum_matrix(self):
-        """Creates quantum-inspired displacement field using entangled waves"""
-        x = np.linspace(0, 4*np.pi, self.w)
-        y = np.linspace(0, 4*np.pi, self.h)
-        xx, yy = np.meshgrid(x, y)
-        return np.sin(xx) * np.cos(yy) * 0.5 + np.random.normal(0, 0.1, (self.h, self.w))
-    
-    def _apply_quantum_effect(self, frame, t, effect, intensity):
-        """Quantum-parallel effect application using numpy vectorization"""
-        if effect == "Quantum Ripple":
-            displacement = intensity * 25 * np.sin(t/3 + self.quantum_field)
-            x_coords = np.clip(np.indices((self.h, self.w))[1] + displacement, 0, self.w-1)
-            y_coords = np.clip(np.indices((self.h, self.w))[0] + np.roll(displacement, 50), 0, self.h-1)
-            return cv2.remap(frame, x_coords.astype(np.float32), y_coords.astype(np.float32), 
-                           cv2.INTER_LANCZOS4)
+class GhibliQuantumEngine:
+    def __init__(self, image):
+        self.base = np.array(image, dtype=np.float32)
+        self.h, self.w, _ = self.base.shape
+        self.time_field = self._create_temporal_field()
         
-        elif effect == "Temporal Zoom":
-            scale = 1 + intensity * 0.5 * np.sin(t/10)
-            M = cv2.getRotationMatrix2D((self.w/2, self.h/2), t*2, scale)
-            return cv2.warpAffine(frame, M, (self.w, self.h), borderMode=cv2.BORDER_REFLECT)
-        
-        elif effect == "Particle Drift":
-            dx = intensity * 40 * np.sin(t/5 + self.quantum_field)
-            dy = intensity * 40 * np.cos(t/5 + np.rot90(self.quantum_field))
-            return cv2.remap(frame, 
-                           (np.indices((self.h, self.w))[1] + dx).astype(np.float32),
-                           (np.indices((self.h, self.w))[0] + dy).astype(np.float32),
-                           cv2.INTER_LINEAR)
+    def _create_temporal_field(self):
+        """Quantum-inspired motion blueprint for natural animations"""
+        x = np.linspace(0, 6*np.pi, self.w)
+        y = np.linspace(0, 6*np.pi, self.h)
+        return np.sin(x[None,:]*y[:,None]/50) * np.cos(y[:,None]*x[None,:]/40)
     
-    def generate_frames(self, duration, fps, effect, intensity):
-        """Quantum-coherent frame sequence generation"""
-        return [self._apply_quantum_effect(self.base, t/fps, effect, intensity)
-                for t in range(int(duration * fps))]
+    def _ghibli_effect(self, frame, t, effect, intensity):
+        """Studio Ghibli signature motion patterns"""
+        if effect == "Gentle Breeze":
+            dx = intensity * 15 * np.sin(t + self.time_field*2)
+            dy = intensity * 10 * np.cos(t*0.8 + self.time_field)
+            return self._warp(frame, dx, dy)
+            
+        elif effect == "Mystical Drift":
+            particles = np.stack([self.time_field]*3, axis=-1)
+            glow = 50 * intensity * np.sin(t*2 + self.time_field*3)
+            return np.clip(frame + particles * glow[...,None], 0, 255)
+            
+        elif effect == "Calm Waves":
+            wave = intensity * 30 * np.sin(t/2 + (self.time_field*4))
+            return self._warp(frame, wave, np.roll(wave, 100, axis=0))
+    
+    def _warp(self, img, dx, dy):
+        """Quantum-stabilized warping"""
+        x = np.clip(np.indices((self.h, self.w))[1] + dx, 0, self.w-1)
+        y = np.clip(np.indices((self.h, self.w))[0] + dy, 0, self.h-1)
+        return cv2.remap(img, x.astype(np.float32), y.astype(np.float32), cv2.INTER_LANCZOS4)
+    
+    def render(self, duration, fps, effect, intensity):
+        """Temporal-coherent animation sequence"""
+        return [self._ghibli_effect(self.base, i/fps, effect, intensity).astype(np.uint8) 
+                for i in range(int(duration*fps))]
 
-# Streamlit quantum interface
 def main():
-    st.set_page_config(page_title="Quantum Video Synthesizer", page_icon="🌌", layout="centered")
+    st.set_page_config(page_title="Ghibli Quantum Animator", page_icon="🎨", layout="wide")
     
-    # Quantum control panel
+    # Studio Ghibli-style UI
     with st.sidebar:
-        st.header("Quantum Parameters")
-        effect = st.selectbox("Effect Type", ["Quantum Ripple", "Temporal Zoom", "Particle Drift"])
-        duration = st.slider("Duration (seconds)", 1.0, 10.0, 5.0, step=0.1)
-        fps = st.slider("Frames Per Second", 12, 60, 24)
-        intensity = st.slider("Effect Intensity", 0.1, 2.0, 1.0, step=0.1)
+        st.header("Totoro Magic Parameters")
+        effect = st.selectbox("Animation Spell", ["Gentle Breeze", "Mystical Drift", "Calm Waves"])
+        duration = st.slider("Magic Duration (s)", 3.0, 15.0, 8.0)
+        fps = st.slider("Frame Enchantment Rate", 12, 60, 24)
+        intensity = st.slider("Spell Intensity", 0.5, 2.5, 1.2)
     
-    # Quantum state input
-    uploaded_file = st.file_uploader("Upload Quantum Image", type=["png", "jpg", "jpeg"])
+    uploaded_file = st.file_uploader("Upload Spirit Image", type=["png", "jpg", "jpeg"])
     
     if uploaded_file:
-        with st.spinner("Collapsing quantum superposition..."):
-            # Prepare quantum state
-            img = np.array(Image.open(uploaded_file).convert("RGB"))
-            engine = QuantumVideoEngine(img)
+        with st.spinner("Summoning forest spirits..."):
+            img = Image.open(uploaded_file).convert("RGB")
+            studio = GhibliQuantumEngine(img)
             
-            # Generate temporal manifold
-            with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp_file:
-                # Quantum frame synthesis
-                frames = engine.generate_frames(duration, fps, effect, intensity)
-                frames = [frame.astype(np.uint8) for frame in frames]
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
+                frames = studio.render(duration, fps, effect, intensity)
+                imageio.mimwrite(tmp.name, frames, fps=fps, quality=9, 
+                               codec="libx264", output_params=["-preset", "medium"])
                 
-                # Entangled video encoding
-                imageio.mimwrite(tmp_file.name, frames, fps=fps, 
-                               codec="libx264", output_params=["-preset", "ultrafast"])
-                
-                # Display quantum manifestation
-                st.video(tmp_file.name)
-                
-                # Quantum state download
-                with open(tmp_file.name, "rb") as f:
-                    st.download_button("Download Quantum Manifestation", f, 
-                                     file_name="quantum_video.mp4", 
-                                     mime="video/mp4")
+                st.video(tmp.name)
+                st.download_button("Capture Magic", tmp.name, 
+                                 file_name="ghibli_manifest.mp4", 
+                                 mime="video/mp4")
 
 if __name__ == "__main__":
     main()
