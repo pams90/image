@@ -1,131 +1,91 @@
 # -*- coding: utf-8 -*-
 """
-Quantum-Inspired Image Animation System
-Built for Streamlit Community Cloud with Willow's Optimization Patterns
+Quantum Image Animator with Aspect Ratio Lock
 """
-
 import streamlit as st
 import numpy as np
 import cv2
-import os
-import tempfile
-from PIL import Image, ImageEnhance
-from streamlit.runtime.uploaded_file_manager import UploadedFile
-from typing import List, Dict, Tuple
 import imageio
+from PIL import Image
+import tempfile
 
-# Quantum-inspired configuration (pretend these are QPU-accelerated)
-QUANTUM_FRAME_OPTIMIZATION = True  # Simulates parallel frame processing
-MAX_QUANTUM_STATES = 8             # Parallel processing threads (quantum-inspired)
+def maintain_aspect_ratio(image: np.ndarray, max_size: int = 1024) -> np.ndarray:
+    """Quantum-optimized aspect ratio preservation"""
+    h, w = image.shape[:2]
+    scale = min(max_size/w, max_size/h)
+    return cv2.resize(image, (int(w*scale), int(h*scale))) if scale < 1 else image
 
-def apply_quantum_blur(image: np.ndarray, intensity: int) -> np.ndarray:
-    """Quantum-inspired Gaussian blur using parallelized operations"""
-    return cv2.GaussianBlur(image, (intensity*2+1, intensity*2+1), 0)
+def quantum_zoom_effect(frame: np.ndarray, progress: float, speed: float) -> np.ndarray:
+    """Aspect-preserving zoom transformation"""
+    h, w = frame.shape[:2]
+    zoom = 1 + progress * speed
+    M = cv2.getRotationMatrix2D((w/2, h/2), 0, zoom)
+    return cv2.warpAffine(frame, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
 
-def generate_quantum_frames(image: np.ndarray, params: Dict) -> List[np.ndarray]:
-    """Generate animation frames using quantum-inspired transformations"""
+def generate_frames(image: np.ndarray, params: dict) -> list:
+    """Quantum frame generator with ratio locking"""
     frames = []
-    height, width = image.shape[:2]
-    
-    # Quantum parallel processing simulation
-    step_size = params['duration'] / params['total_frames']
+    h, w = image.shape[:2]
     
     for i in range(params['total_frames']):
         frame = image.copy()
         progress = i / params['total_frames']
         
-        # Quantum state superposition (multiple effects combined)
         if params['zoom_effect']:
-            zoom = 1 + progress * params['speed']
-            M = cv2.getRotationMatrix2D((width/2, height/2), 0, zoom)
-            frame = cv2.warpAffine(frame, M, (width, height))
-        
+            frame = quantum_zoom_effect(frame, progress, params['speed'])
+            
         if params['pan_effect']:
-            pan_x = int((i * params['speed']) % width)
-            frame = np.roll(frame, pan_x, axis=1)
+            pan_step = int((i * params['speed'] * 50) % w)
+            frame = np.roll(frame, pan_step, axis=1)
         
         if params['wave_effect']:
-            wave_matrix = np.zeros_like(frame)
-            wave_scale = 25 * params['speed']
-            for y in range(height):
-                wave_matrix[y,:] = int(wave_scale * np.sin(2 * np.pi * y/height + progress))
-            frame = cv2.addWeighted(frame, 0.8, wave_matrix, 0.2, 0)
+            y_coords = np.arange(h)[:, np.newaxis]
+            wave_offset = (np.sin(y_coords/h * 4*np.pi + progress*10) * 20 * params['speed']).astype(np.int32)
+            frame = np.roll(frame, wave_offset, axis=1)
         
         frames.append(frame)
     
     return frames
 
-def create_video(frames: List[np.ndarray], fps: int) -> str:
-    """Quantum-optimized video encoding using imageio"""
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmpfile:
-        writer = imageio.get_writer(tmpfile.name, fps=fps, codec='libx264')
-        for frame in frames:
-            writer.append_data(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        writer.close()
-        return tmpfile.name
-
 def main():
-    # Quantum-style Streamlit interface
-    st.set_page_config(page_title="Willow's Quantum Animator", layout="centered")
+    st.set_page_config(page_title="Willow Aspect-Preserving Animator", layout="centered")
+    st.title("🌀 Quantum Image Animator")
     
-    st.markdown("""
-    <style>
-    .st-emotion-cache-18ni7ap { background: linear-gradient(45deg, #000428, #004e92); }
-    .stProgress > div > div > div > div { background: #00f2fe; }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.title("🌀 Willow Quantum Animator")
-    st.caption("Powered by Google's Quantum Processing Patterns")
-
     with st.sidebar:
-        st.header("Quantum Parameters")
-        duration = st.slider("Video Duration (s)", 2, 10, 5)
-        animation_speed = st.slider("Animation Speed", 0.5, 3.0, 1.0)
-        effects = st.multiselect("Quantum Effects", 
-                               ["Zoom Vortex", "Panning Wave", "Quantum Ripple"],
-                               default=["Zoom Vortex"])
-
+        st.header("Animation Controls")
+        duration = st.slider("Duration (seconds)", 2, 10, 5)
+        speed = st.slider("Effect Intensity", 0.5, 3.0, 1.0)
+        effects = st.multiselect("Effects", ["Zoom", "Pan", "Wave"], default=["Zoom"])
+    
     uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
     
     if uploaded_file:
-        image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="Original Image", use_column_width=True)
+        pil_image = Image.open(uploaded_file).convert("RGB")
+        orig_image = np.array(pil_image)
+        processed_image = maintain_aspect_ratio(orig_image)
         
-        if st.button("⚡ Generate Quantum Animation"):
-            with st.spinner("Collapsing Quantum States..."):
-                # Quantum state preparation
-                img_array = np.array(image)
-                params = {
-                    'duration': duration,
-                    'speed': animation_speed,
-                    'total_frames': int(duration * 24),  # 24 FPS base
-                    'zoom_effect': "Zoom Vortex" in effects,
-                    'pan_effect': "Panning Wave" in effects,
-                    'wave_effect': "Quantum Ripple" in effects
-                }
-
-                # Quantum-inspired parallel processing
-                if QUANTUM_FRAME_OPTIMIZATION:
-                    frame_chunks = np.array_split(img_array, MAX_QUANTUM_STATES)
-                    processed_frames = []
-                    # (Simulated parallel processing)
-                    for chunk in frame_chunks:
-                        processed_frames.extend(generate_quantum_frames(chunk, params))
-                else:
-                    processed_frames = generate_quantum_frames(img_array, params)
-
-                # Create video
-                video_path = create_video(processed_frames, fps=24)
-                
-                # Display results
-                st.success("Quantum State Collapse Complete!")
-                st.video(video_path)
-                
-                # Download functionality
-                with open(video_path, "rb") as f:
-                    st.download_button("Download Quantum Animation", f.read(), 
-                                     "quantum_animation.mp4", "video/mp4")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.image(orig_image, caption="Original Image")
+        with col2:
+            st.image(processed_image, caption="Processed Size")
+        
+        if st.button("Generate Quantum Animation"):
+            params = {
+                'total_frames': duration * 24,
+                'speed': speed,
+                'zoom_effect': "Zoom" in effects,
+                'pan_effect': "Pan" in effects,
+                'wave_effect': "Wave" in effects
+            }
+            
+            with st.spinner("Rendering quantum states..."):
+                frames = generate_frames(processed_image, params)
+                with tempfile.NamedTemporaryFile(suffix='.mp4') as tmpfile:
+                    imageio.mimsave(tmpfile.name, frames, fps=24, codec='libx264')
+                    st.video(tmpfile.read())
+            
+            st.success("Quantum animation complete! Original aspect ratio maintained.")
 
 if __name__ == "__main__":
     main()
