@@ -1,10 +1,16 @@
 import streamlit as st
-import cv2
-import numpy as np
-from PIL import Image
-import imageio
 import tempfile
 import os
+
+# Check for dependencies
+try:
+    import cv2
+    import numpy as np
+    from PIL import Image
+    import imageio
+except ImportError as e:
+    st.error(f"Missing dependency: {e}. Please install the required packages.")
+    st.stop()
 
 # Function to apply animation effects
 def apply_animation_effect(image, effect, frame_count, speed):
