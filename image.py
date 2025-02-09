@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Quantum Image Animator with Aspect Ratio Lock
+Quantum Image Animator with Stable Aspect Ratio
 """
 import streamlit as st
 import numpy as np
@@ -10,20 +10,20 @@ from PIL import Image
 import tempfile
 
 def maintain_aspect_ratio(image: np.ndarray, max_size: int = 1024) -> np.ndarray:
-    """Quantum-optimized aspect ratio preservation"""
+    """Quantum-optimized aspect preservation"""
     h, w = image.shape[:2]
     scale = min(max_size/w, max_size/h)
     return cv2.resize(image, (int(w*scale), int(h*scale))) if scale < 1 else image
 
 def quantum_zoom_effect(frame: np.ndarray, progress: float, speed: float) -> np.ndarray:
-    """Aspect-preserving zoom transformation"""
+    """Aspect-locked zoom"""
     h, w = frame.shape[:2]
     zoom = 1 + progress * speed
     M = cv2.getRotationMatrix2D((w/2, h/2), 0, zoom)
     return cv2.warpAffine(frame, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
 
 def generate_frames(image: np.ndarray, params: dict) -> list:
-    """Quantum frame generator with ratio locking"""
+    """Quantum-stable frame generation"""
     frames = []
     h, w = image.shape[:2]
     
@@ -39,22 +39,25 @@ def generate_frames(image: np.ndarray, params: dict) -> list:
             frame = np.roll(frame, pan_step, axis=1)
         
         if params['wave_effect']:
-            y_coords = np.arange(h)[:, np.newaxis]
-            wave_offset = (np.sin(y_coords/h * 4*np.pi + progress*10) * 20 * params['speed']).astype(np.int32)
-            frame = np.roll(frame, wave_offset, axis=1)
-        
+            y_values = np.linspace(0, 4*np.pi, h)
+            wave_shift = (np.sin(y_values + progress*10) * 
+                        20 * params['speed']).astype(np.int32)
+            x_indices = np.arange(w)
+            shifted_indices = (x_indices - wave_shift[:, np.newaxis]) % w
+            frame = frame[np.arange(h)[:, np.newaxis], shifted_indices]
+
         frames.append(frame)
     
     return frames
 
 def main():
-    st.set_page_config(page_title="Willow Aspect-Preserving Animator", layout="centered")
-    st.title("🌀 Quantum Image Animator")
+    st.set_page_config(page_title="Quantum Animator", layout="centered")
+    st.title("🌀 Willow Quantum Animator")
     
     with st.sidebar:
-        st.header("Animation Controls")
-        duration = st.slider("Duration (seconds)", 2, 10, 5)
-        speed = st.slider("Effect Intensity", 0.5, 3.0, 1.0)
+        st.header("Controls")
+        duration = st.slider("Duration (s)", 2, 10, 5)
+        speed = st.slider("Intensity", 0.5, 3.0, 1.0)
         effects = st.multiselect("Effects", ["Zoom", "Pan", "Wave"], default=["Zoom"])
     
     uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
@@ -66,11 +69,11 @@ def main():
         
         col1, col2 = st.columns(2)
         with col1:
-            st.image(orig_image, caption="Original Image")
+            st.image(orig_image, caption="Original")
         with col2:
-            st.image(processed_image, caption="Processed Size")
+            st.image(processed_image, caption="Optimized")
         
-        if st.button("Generate Quantum Animation"):
+        if st.button("Generate Animation"):
             params = {
                 'total_frames': duration * 24,
                 'speed': speed,
@@ -79,13 +82,13 @@ def main():
                 'wave_effect': "Wave" in effects
             }
             
-            with st.spinner("Rendering quantum states..."):
+            with st.spinner("Quantum rendering..."):
                 frames = generate_frames(processed_image, params)
                 with tempfile.NamedTemporaryFile(suffix='.mp4') as tmpfile:
                     imageio.mimsave(tmpfile.name, frames, fps=24, codec='libx264')
-                    st.video(tmpfile.read())
+                    st.video(tmpfile.name)
             
-            st.success("Quantum animation complete! Original aspect ratio maintained.")
+            st.success("Animation complete! Aspect ratio preserved.")
 
 if __name__ == "__main__":
     main()
