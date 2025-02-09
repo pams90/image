@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Quantum Object Animator with Debugging
+High-Visibility Quantum Animator
 """
 import streamlit as st
 import numpy as np
@@ -9,137 +9,138 @@ import imageio
 from PIL import Image
 import tempfile
 import random
+import math
 
-# Debugging function
-def debug_frame(frame: np.ndarray, name: str = "frame") -> None:
-    """Display frame statistics for debugging"""
-    st.sidebar.write(f"🔍 {name} debug:")
-    st.sidebar.write(f"- Shape: {frame.shape}")
-    st.sidebar.write(f"- Min/Max: {frame.min()}, {frame.max()}")
-    st.sidebar.write(f"- Mean: {frame.mean():.2f}")
-
-# Quantum Object Movement Functions
-def detect_quantum_objects(image: np.ndarray) -> list:
-    """Quantum-inspired object detection using edge analysis"""
+def amplify_quantum_objects(image: np.ndarray) -> list:
+    """Enhanced object detection with dynamic thresholds"""
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    edges = cv2.Canny(gray, 100, 200)
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    return [cv2.boundingRect(c) for c in contours if cv2.contourArea(c) > 1000]
+    blurred = cv2.GaussianBlur(gray, (7,7), 1.5)
+    edges = cv2.Canny(blurred, 50, 150)
+    contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    return [cv2.boundingRect(c) for c in contours if 500 < cv2.contourArea(c) < 100000]
 
-def quantum_object_movement(frame: np.ndarray, progress: float, params: dict) -> np.ndarray:
-    """Move detected objects with individual quantum trajectories"""
+def quantum_object_animation(frame: np.ndarray, progress: float, params: dict) -> np.ndarray:
+    """Dynamic object animation with multiple effects"""
     h, w = frame.shape[:2]
     objects = params.get('objects', [])
     
-    # Initialize object states on first frame
+    # Initialize enhanced object states
     if progress == 0:
-        detected_objects = detect_quantum_objects(frame)
+        detected_objects = amplify_quantum_objects(frame)
         if not detected_objects:
-            st.warning("⚠️ No objects detected! Using default movement.")
-            detected_objects = [(50, 50, 100, 100)]  # Fallback object
+            detected_objects = [(0, 0, w, h)]  # Full frame fallback
         params['objects'] = [{
             'x': x, 'y': y, 
-            'dx': random.uniform(-3, 3)*params['speed'], 
-            'dy': random.uniform(-2, 2)*params['speed'],
+            'dx': random.uniform(-5,5)*params['speed'],
+            'dy': random.uniform(-4,4)*params['speed'],
             'w': width, 
-            'h': height
+            'h': height,
+            'angle': 0,
+            'd_angle': random.uniform(-4,4),
+            'scale': 1.0,
+            'd_scale': random.uniform(0.95,1.05)
         } for (x, y, width, height) in detected_objects]
 
-    # Create background with subtle motion
+    # Create dynamic background
     bg = frame.copy()
     if params['background_flow']:
-        bg = cv2.warpAffine(bg, np.float32([[1, 0, 0.5*params['speed']], [0, 1, 0.3*params['speed']]]), (w, h))
+        bg = cv2.warpAffine(bg, np.float32([
+            [1, 0, 2*params['speed']*math.sin(progress*5)],
+            [0, 1, 1*params['speed']*math.cos(progress*3)]
+        ]), (w, h))
 
-    # Move each object
+    # Enhanced object transformations
     for obj in params['objects']:
-        # Update positions with quantum uncertainty
-        obj['x'] = (obj['x'] + obj['dx'] + random.uniform(-0.5, 0.5)) % w
-        obj['y'] = (obj['y'] + obj['dy'] + random.uniform(-0.3, 0.3)) % h
+        obj['x'] = (obj['x'] + obj['dx'] + 2*math.sin(progress*10)) % w
+        obj['y'] = (obj['y'] + obj['dy'] + 1.5*math.cos(progress*8)) % h
+        obj['angle'] += obj['d_angle']
+        obj['scale'] *= obj['d_scale']
         
-        # Extract object and blend with background
-        obj_img = frame[int(obj['y']):int(obj['y']+obj['h']), 
-                        int(obj['x']):int(obj['x']+obj['w'])]
+        # Rotate and scale object
+        M = cv2.getRotationMatrix2D((obj['w']/2, obj['h']/2), obj['angle'], obj['scale'])
+        obj_img = cv2.warpAffine(
+            frame[int(obj['y']):int(obj['y']+obj['h']), 
+                 int(obj['x']):int(obj['x']+obj['w'])],
+            M, (obj['w'], obj['h'])
+        )
+        
+        # Dynamic blending
         if obj_img.size > 0:
-            bg[int(obj['y']):int(obj['y']+obj['h']), 
-               int(obj['x']):int(obj['x']+obj['w'])] = cv2.addWeighted(
-                bg[int(obj['y']):int(obj['y']+obj['h']), 
-                   int(obj['x']):int(obj['x']+obj['w'])],
-                0.3,
-                obj_img,
-                0.7,
-                0
-            )
+            alpha = 0.7 + 0.3*math.sin(progress*6)
+            bg = overlay_transparent(bg, obj_img, int(obj['x']), int(obj['y']), alpha)
 
     return bg
 
-# Frame generator
-def generate_frames(image: np.ndarray, params: dict) -> list:
-    """Generate frames with moving objects"""
+def overlay_transparent(bg: np.ndarray, fg: np.ndarray, x: int, y: int, alpha: float) -> np.ndarray:
+    """Advanced blending with boundary checks"""
+    h, w = fg.shape[:2]
+    y1, y2 = max(0, y), min(bg.shape[0], y + h)
+    x1, x2 = max(0, x), min(bg.shape[1], x + w)
+    
+    if y2 - y1 <=0 or x2 - x1 <=0: return bg
+    
+    fg_roi = fg[0:y2-y1, 0:x2-x1]
+    bg_roi = bg[y1:y2, x1:x2]
+    
+    blend = cv2.addWeighted(bg_roi, 1-alpha, fg_roi, alpha, 0)
+    bg[y1:y2, x1:x2] = blend
+    return bg
+
+def generate_pronounced_frames(image: np.ndarray, params: dict) -> list:
+    """Generate high-visibility animation frames"""
     frames = []
-    h, w = image.shape[:2]
-    state_params = {'speed': params['speed'], 'background_flow': params['background_flow']}
+    state_params = {
+        'speed': params['speed'],
+        'background_flow': params['background_flow']
+    }
     
     for i in range(params['total_frames']):
         frame = image.copy()
         progress = i / params['total_frames']
         
-        # Apply object movement
-        if params['object_movement']:
-            frame = quantum_object_movement(frame, progress, state_params)
-            
+        frame = quantum_object_animation(frame, progress, state_params)
         frames.append(frame)
-    
+        
+        # Progressively increase effects
+        state_params['speed'] *= 1.005  # Accelerate movement
+        
     return frames
 
-# Main app
 def main():
-    st.set_page_config(page_title="Quantum Object Animator", layout="centered")
-    st.title("🌀 Quantum Object Movement")
+    st.set_page_config(page_title="Quantum FX Animator", layout="centered")
+    st.title("🌀 Quantum Amplified Animation")
     
     with st.sidebar:
-        st.header("Controls")
+        st.header("Amplification Controls")
         duration = st.slider("Duration (s)", 2, 10, 5)
-        speed = st.slider("Movement Speed", 0.5, 3.0, 1.0)
+        speed = st.slider("Motion Intensity", 1.0, 5.0, 2.5, 0.5)
         effects = st.multiselect("Effects",
-            ["Object Movement", "Background Flow"],
-            default=["Object Movement"]
+            ["Object Animation", "Background Flow"],
+            default=["Object Animation", "Background Flow"]
         )
-        debug = st.checkbox("Enable Debugging")
         
     uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
     
     if uploaded_file:
-        try:
-            pil_image = Image.open(uploaded_file).convert("RGB")
-            orig_image = np.array(pil_image)
+        pil_image = Image.open(uploaded_file).convert("RGB")
+        orig_image = np.array(pil_image)
+        processed_image = cv2.resize(orig_image, (768, 768))  # Higher resolution
+        
+        if st.button("Generate Amplified Animation"):
+            params = {
+                'total_frames': duration * 24,
+                'speed': speed,
+                'object_movement': "Object Animation" in effects,
+                'background_flow': "Background Flow" in effects
+            }
             
-            if debug:
-                debug_frame(orig_image, "Original Image")
+            with st.spinner("Generating quantum spectacle..."):
+                frames = generate_pronounced_frames(processed_image, params)
+                with tempfile.NamedTemporaryFile(suffix='.mp4') as tmpfile:
+                    imageio.mimsave(tmpfile.name, frames, fps=24, codec='libx264')
+                    st.video(tmpfile.name)
             
-            processed_image = cv2.resize(orig_image, (512, 512))  # Fixed size for stability
-            
-            if st.button("Generate Animation"):
-                params = {
-                    'total_frames': duration * 24,
-                    'speed': speed,
-                    'object_movement': "Object Movement" in effects,
-                    'background_flow': "Background Flow" in effects
-                }
-                
-                with st.spinner("Rendering quantum animation..."):
-                    frames = generate_frames(processed_image, params)
-                    if debug:
-                        debug_frame(frames[0], "First Frame")
-                    
-                    with tempfile.NamedTemporaryFile(suffix='.mp4') as tmpfile:
-                        imageio.mimsave(tmpfile.name, frames, fps=24, codec='libx264')
-                        st.video(tmpfile.name)
-                
-                st.success("🎉 Animation complete!")
-        except Exception as e:
-            st.error(f"🚨 Error: {str(e)}")
-            if debug:
-                st.exception(e)
+            st.success("⚡ Electrifying animation complete!")
 
 if __name__ == "__main__":
     main()
