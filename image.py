@@ -1,95 +1,78 @@
 import streamlit as st
+import numpy as np
+from PIL import Image
+import imageio
 import tempfile
-import os
+import math
 
-# Check for dependencies
-try:
-    import cv2
-    import numpy as np
-    from PIL import Image
-    import imageio
-except ImportError as e:
-    st.error(f"Missing dependency: {e}. Please install the required packages.")
-    st.stop()
+# Quantum-inspired optimization: Precompute transformation matrices
+def quantum_transform_cache(duration, fps):
+    """Generates smooth motion paths using sinusoidal functions"""
+    frames = int(duration * fps)
+    return {
+        'zoom': [0.5 * (1 + math.sin(2 * math.pi * i/(frames*0.8))) for i in range(frames)],
+        'swing': [35 * math.sin(2 * math.pi * i/(frames//2)) for i in range(frames)],
+        'drift': [(math.cos(2 * math.pi * i/frames), math.sin(2 * math.pi * i/frames)) 
+                for i in range(frames)]
+    }
 
-# Function to apply animation effects
-def apply_animation_effect(image, effect, frame_count, speed):
+# Frame generation with temporal coherence
+def generate_frames(img_array, effect, duration, fps, intensity):
+    h, w = img_array.shape[:2]
+    cache = quantum_transform_cache(duration, fps)
     frames = []
-    height, width, _ = image.shape
     
-    for i in range(frame_count):
-        frame = image.copy()
+    for i in range(int(duration * fps)):
+        canvas = img_array.copy().astype(np.float32)
         
-        if effect == "zoom":
-            scale = 1 + (i / frame_count) * speed
-            frame = cv2.resize(frame, None, fx=scale, fy=scale)
-            frame = frame[int((frame.shape[0] - height) / 2):int((frame.shape[0] + height) / 2),
-                          int((frame.shape[1] - width) / 2):int((frame.shape[1] + width) / 2)]
-        
-        elif effect == "rotate":
-            angle = i * speed
-            M = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1)
-            frame = cv2.warpAffine(frame, M, (width, height))
-        
-        elif effect == "pan":
-            shift_x = int((i / frame_count) * speed * width)
-            frame = np.roll(frame, shift_x, axis=1)
-        
-        frames.append(frame)
+        # Quantum-inspired superposition of effects
+        if effect == "Quantum Ripple":
+            ripple = np.indices((h, w))
+            x = ripple[1] + intensity * 20 * math.sin(i/3 + ripple[1]/30)
+            y = ripple[0] + intensity * 20 * math.cos(i/3 + ripple[0]/30)
+            canvas = cv2.remap(img_array, x.astype(np.float32), y.astype(np.float32), 
+                             cv2.INTER_LANCZOS4)
+            
+        if effect == "Temporal Zoom":
+            z_factor = 1 + cache['zoom'][i] * intensity
+            M = cv2.getRotationMatrix2D((w/2, h/2), cache['swing'][i], z_factor)
+            canvas = cv2.warpAffine(canvas, M, (w, h), borderMode=cv2.BORDER_REFLECT)
+
+        if effect == "Particle Drift":
+            dx, dy = cache['drift'][i]
+            M = np.float32([[1, 0, intensity * 50 * dx], [0, 1, intensity * 50 * dy]])
+            canvas = cv2.warpAffine(canvas, M, (w, h))
+            
+        frames.append(canvas.astype(np.uint8))
     
     return frames
 
-# Function to create video from frames
-def create_video(frames, duration, output_path):
-    frame_rate = len(frames) / duration
-    with imageio.get_writer(output_path, fps=frame_rate) as writer:
-        for frame in frames:
-            writer.append_data(frame)
-
-# Streamlit app
+# Streamlit interface
 def main():
-    st.title("Image to Animated Video Converter")
-    st.write("Upload an image and customize the animation to create a video.")
+    st.set_page_config(page_title="Quantum Video Synthesizer", layout="wide")
     
-    # Upload image
-    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+    with st.sidebar:
+        st.header("Quantum Parameters")
+        effect = st.selectbox("Effect Type", ["Quantum Ripple", "Temporal Zoom", "Particle Drift"])
+        duration = st.slider("Duration (s)", 1.0, 10.0, 5.0)
+        fps = st.slider("FPS", 10, 60, 24)
+        intensity = st.slider("Effect Intensity", 0.1, 2.0, 1.0)
     
-    if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        image = np.array(image)
+    uploaded_file = st.file_uploader("Upload Quantum Image", type=["png", "jpg", "jpeg"])
+    
+    if uploaded_file:
+        img = Image.open(uploaded_file).convert("RGB")
+        img_array = np.array(img)
         
-        # Display the original image
-        st.image(image, caption="Uploaded Image", use_column_width=True)
-        
-        # Animation options
-        st.sidebar.header("Animation Settings")
-        effect = st.sidebar.selectbox("Select Animation Effect", ["zoom", "rotate", "pan"])
-        duration = st.sidebar.slider("Video Duration (seconds)", 1, 10, 5)
-        speed = st.sidebar.slider("Animation Speed", 0.1, 2.0, 1.0)
-        frame_count = st.sidebar.slider("Number of Frames", 10, 100, 50)
-        
-        # Apply animation
-        frames = apply_animation_effect(image, effect, frame_count, speed)
-        
-        # Create video
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmpfile:
-            output_path = tmpfile.name
-            create_video(frames, duration, output_path)
+        with st.spinner("Synthesizing spacetime continuum..."):
+            frames = generate_frames(img_array, effect, duration, fps, intensity)
             
-            # Display the video
-            st.video(output_path)
-            
-            # Download link
-            with open(output_path, "rb") as file:
-                btn = st.download_button(
-                    label="Download Video",
-                    data=file,
-                    file_name="animated_video.mp4",
-                    mime="video/mp4"
-                )
-        
-        # Clean up
-        os.unlink(output_path)
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as tmpfile:
+                imageio.mimwrite(tmpfile.name, frames, fps=fps, codec="libx264", 
+                               output_params=["-preset", "ultrafast"])
+                st.video(tmpfile.name)
+                st.download_button("Download Singularity", tmpfile.name, 
+                                 file_name="quantum_video.mp4")
 
 if __name__ == "__main__":
     main()
