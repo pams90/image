@@ -37,8 +37,6 @@ class QuantumAnimationEngine:
             "Sakura Storms": self._sakura_effect,
             "Quantum Ripple": self._ripple_effect,
             "Temporal Zoom": self._zoom_effect,
-            "Mystical Lights": self._light_effect,
-            "Rain Particles": self._rain_effect,
             "Dynamic Wind": self._wind_effect
         }
         return effect_map[effect](frame, t, params)
@@ -86,6 +84,13 @@ class QuantumAnimationEngine:
                         (np.indices((self.h, self.w))[0] + distortion).astype(np.float32),
                         cv2.INTER_CUBIC)
 
+    def _zoom_effect(self, frame, t, params):
+        """Temporal-consistent zoom with rotation"""
+        scale = 1 + params['intensity'] * 0.5 * np.sin(t/3)
+        angle = params['speed'] * 15 * t
+        M = cv2.getRotationMatrix2D((self.w/2, self.h/2), angle, scale)
+        return cv2.warpAffine(frame, M, (self.w, self.h), borderMode=cv2.BORDER_REFLECT)
+
     def _wind_effect(self, frame, t, params):
         """Dynamic wind simulation with directional control"""
         wind_vec = self.quantum_fields['wind'] * params['intensity'] * 30
@@ -106,6 +111,7 @@ def main():
             "Star Particles",
             "Sakura Storms",
             "Quantum Ripple",
+            "Temporal Zoom",
             "Dynamic Wind"
         ])
         
