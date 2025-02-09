@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-High-Visibility Quantum Animator
+Quantum Animator with Vidnoz-Like Effects
 """
 import streamlit as st
 import numpy as np
@@ -10,6 +10,28 @@ from PIL import Image
 import tempfile
 import random
 import math
+from moviepy.editor import VideoFileClip, AudioFileClip
+
+# Enhanced Effects
+def parallax_effect(frame: np.ndarray, progress: float, intensity: float) -> np.ndarray:
+    """Simulate depth by moving foreground and background at different speeds"""
+    h, w = frame.shape[:2]
+    bg = cv2.warpAffine(frame, np.float32([[1,0,0.5*progress*intensity],[0,1,0.2*progress*intensity]]), (w,h))
+    fg = cv2.warpAffine(frame, np.float32([[1,0,2*progress*intensity],[0,1,1*progress*intensity]]), (w,h))
+    return cv2.addWeighted(bg, 0.7, fg, 0.3, 0)
+
+def natural_motion(frame: np.ndarray, progress: float, intensity: float) -> np.ndarray:
+    """Simulate natural movements like swaying or flowing"""
+    h, w = frame.shape[:2]
+    wave_matrix = np.zeros_like(frame)
+    for y in range(h):
+        wave_matrix[y,:] = int(20 * intensity * np.sin(2*np.pi*y/h + progress*5))
+    return cv2.addWeighted(frame, 0.8, wave_matrix, 0.2, 0)
+
+def add_text(frame: np.ndarray, text: str, position: tuple, font_scale: float = 1.0) -> np.ndarray:
+    """Add dynamic text overlays"""
+    return cv2.putText(frame, text, position, cv2.FONT_HERSHEY_SIMPLEX, 
+                       font_scale, (255,255,255), 2, cv2.LINE_AA)
 
 def amplify_quantum_objects(image: np.ndarray) -> list:
     """Enhanced object detection with dynamic thresholds"""
@@ -98,13 +120,29 @@ def generate_pronounced_frames(image: np.ndarray, params: dict) -> list:
         frame = image.copy()
         progress = i / params['total_frames']
         
-        frame = quantum_object_animation(frame, progress, state_params)
+        # Apply effects
+        if params['parallax']:
+            frame = parallax_effect(frame, progress, params['speed'])
+        if params['natural_motion']:
+            frame = natural_motion(frame, progress, params['speed'])
+        if params['object_movement']:
+            frame = quantum_object_animation(frame, progress, state_params)
+        if params['text_overlay']:
+            frame = add_text(frame, "Quantum Animator", (50, 50), font_scale=1.5)
+        
         frames.append(frame)
         
         # Progressively increase effects
         state_params['speed'] *= 1.005  # Accelerate movement
         
     return frames
+
+def add_music(video_path: str, audio_path: str, output_path: str) -> None:
+    """Add background music to video"""
+    video = VideoFileClip(video_path)
+    audio = AudioFileClip(audio_path)
+    final_clip = video.set_audio(audio)
+    final_clip.write_videofile(output_path, codec='libx264')
 
 def main():
     st.set_page_config(page_title="Quantum FX Animator", layout="centered")
@@ -115,11 +153,12 @@ def main():
         duration = st.slider("Duration (s)", 2, 10, 5)
         speed = st.slider("Motion Intensity", 1.0, 5.0, 2.5, 0.5)
         effects = st.multiselect("Effects",
-            ["Object Animation", "Background Flow"],
+            ["Object Animation", "Background Flow", "Parallax", "Natural Motion", "Text Overlay"],
             default=["Object Animation", "Background Flow"]
         )
         
     uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
+    audio_file = st.file_uploader("Upload Background Music (optional)", type=["mp3", "wav"])
     
     if uploaded_file:
         pil_image = Image.open(uploaded_file).convert("RGB")
@@ -131,14 +170,27 @@ def main():
                 'total_frames': duration * 24,
                 'speed': speed,
                 'object_movement': "Object Animation" in effects,
-                'background_flow': "Background Flow" in effects
+                'background_flow': "Background Flow" in effects,
+                'parallax': "Parallax" in effects,
+                'natural_motion': "Natural Motion" in effects,
+                'text_overlay': "Text Overlay" in effects
             }
             
             with st.spinner("Generating quantum spectacle..."):
                 frames = generate_pronounced_frames(processed_image, params)
-                with tempfile.NamedTemporaryFile(suffix='.mp4') as tmpfile:
-                    imageio.mimsave(tmpfile.name, frames, fps=24, codec='libx264')
-                    st.video(tmpfile.name)
+                with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmpfile:
+                    video_path = tmpfile.name
+                    imageio.mimsave(video_path, frames, fps=24, codec='libx264')
+                    
+                    if audio_file:
+                        with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as audio_tmp:
+                            audio_tmp.write(audio_file.read())
+                            audio_path = audio_tmp.name
+                            output_path = video_path.replace(".mp4", "_with_audio.mp4")
+                            add_music(video_path, audio_path, output_path)
+                            st.video(output_path)
+                    else:
+                        st.video(video_path)
             
             st.success("⚡ Electrifying animation complete!")
 
